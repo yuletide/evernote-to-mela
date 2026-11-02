@@ -21,6 +21,15 @@ or images embedded in text; do not assume arbitrary Evernote attachments or
 inline layout will survive. Retain the original ENEX as the authoritative
 backup and report any content that cannot be represented.
 
+## 0. Check import compatibility
+
+Before building the full converter, create a small synthetic `.melarecipes`
+archive using the documented member layout and fields. Import it into a safe
+test library or device and check the title, ingredients, instructions, image
+and other populated fields. If a Mela export is available, compare its archive
+members and JSON as an additional check, but do not require one. Resolve any
+format or import problems before the pilot or full conversion.
+
 ## 1. Export and inventory
 
 - In Evernote's desktop app, export the recipe notebook as ENEX, including
@@ -41,7 +50,10 @@ and a per-note `report.csv`:
    scans. PDFs require supported page extraction or rendering; flag anything
    that cannot be processed. Re-fetching a source page and using its
    schema.org data can help, but the Evernote note remains authoritative
-   for edits and annotations.
+   for edits and annotations. If the URL is dead, private or lacks Recipe
+   data, extract from the archived note body and attachments instead; record
+   fetch failures and content mismatches in the report and flag unresolved
+   clips for manual review.
 3. Generate documented Mela fields. Preserve section headings, quantities,
    units and instructions; do not invent missing information. Include the
    source link and user annotations. Put supported recipe images in the
@@ -49,8 +61,9 @@ and a per-note `report.csv`:
 4. Flag non-recipes, multiple recipes in one note, duplicates, encrypted text,
    missing fields, unreadable images, conflicts with source pages, model
    uncertainty and processing failures for review. Do not silently discard
-   notes. Use stable IDs and report note-to-recipe mappings so retries and
-   count reconciliation are possible.
+   notes. Record each source note's stable identifier and outcome (converted,
+   skipped or failed), manual-review status and note-to-recipe mappings so
+   retries and reconciliation are possible.
 
 The converter should make its chosen LLM provider and costs clear, allow
 credentials to be supplied securely, and avoid logging recipe content by
@@ -72,9 +85,11 @@ attachment types only when supported and appropriate.
 - Convert the complete notebook, review every flagged result, and import
   in manageable batches.
 - Reconcile all roughly 200 source notes against the report, including
-  skipped and failed notes and notes containing multiple recipes. Spot-check
-  at least 10% of imported recipes against the originals, including photos,
-  ingredient quantities and directions.
+  skipped and failed notes and notes containing multiple recipes. Compare
+  source and imported attachment counts, accounting for unsupported or
+  omitted attachments in the report. Spot-check at least 10% of imported
+  recipes against the originals, including photos, ingredient quantities
+  and directions.
 - Keep the ENEX files and original Evernote notebook until the migration is
   verified; retain the exports as the lossless backup.
 
