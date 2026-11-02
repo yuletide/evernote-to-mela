@@ -72,6 +72,14 @@ them so we know the size of each bucket before investing in any of them.
 Dead links in bucket A drop into B, because the clipped content is still in the
 note body.
 
+Confirmed mix for this collection: image scans, web captures, and written-out
+recipes, so A, B and C all need building. For C, skip classic OCR (Tesseract):
+it handles clean printed pages but falls apart on handwriting, multi-column
+cookbook layouts, and photos taken at an angle. A vision LLM reads the image
+and returns structured fields in one step. Notes with several images (a recipe
+spanning two cookbook pages) get all their images sent in one request so the
+model can stitch them together.
+
 ## 4. The converter
 
 A Python script, roughly:
