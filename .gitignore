@@ -1,0 +1,6 @@
+*.enex
+*.melarecipe
+*.melarecipes
+*.csv
+.env
+__pycache__/
