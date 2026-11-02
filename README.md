@@ -7,8 +7,13 @@ OpenAI API to extract recipe fields from note text, images and PDFs. See
 ## Before starting
 
 - Python 3.9 or later and an OpenAI API key with access to a vision-capable
-  model supporting structured outputs and PDF input are required. No Python
-  packages need to be installed.
+  model supporting structured outputs and PDF input are required. Install the
+  image and PDF dependencies in a virtual environment:
+
+  ```sh
+  python3 -m venv .venv
+  .venv/bin/python -m pip install -r requirements.txt
+  ```
 - This sends the entire selected note text and supported image and PDF
   attachments to OpenAI. API use may incur charges, including for image and
   PDF processing. Review current model pricing and OpenAI's data policies
@@ -25,7 +30,7 @@ Set `OPENAI_API_KEY` in your environment without putting it into the repository,
 then run:
 
 ```sh
-python3 evernote_to_mela.py recipes.enex \
+.venv/bin/python evernote_to_mela.py recipes.enex \
   --output pilot.melarecipes --report pilot.csv --limit 20
 ```
 
@@ -46,12 +51,24 @@ with spreadsheet formula characters are prefixed with an apostrophe.
 Avoid importing both a pilot and a full run into the same library without
 first checking how Mela handles existing recipe IDs.
 
-The script uses archived note content, not live websites. It includes JPEG,
-PNG, GIF and WebP resources as Mela images, and sends PDFs to the model for
-extraction but does not embed PDFs in Mela. Other attachments, encrypted
-blocks, missing fields, uncertain classifications and multi-recipe notes are
-flagged for review. Image attachments on multi-recipe notes are copied to
-each recipe. Preserve the ENEX to retain originals and unsupported content.
+The script uses archived note content, not live websites. It preserves JPEG,
+PNG and WebP attachments as Mela images, converts other readable image formats
+(including HEIC and GIF) to PNG, and renders every PDF page as a PNG image.
+The original PDF is also sent to the model, but cannot be embedded as a PDF in
+Mela. All source images and rendered PDF pages are attached to every recipe
+from the note so cookbook photos are not discarded. The model picks a lead
+image for each recipe when it can; review its choice, especially for notes
+containing multiple recipes. This can duplicate images and increase archive
+size, API usage and cost.
+
+Inline image links and unsupported or unreadable attachments are flagged; the
+script does not download images from source websites. Recipes without source
+images are flagged rather than given an invented image. For those recipes,
+open the saved source link in Mela to find an image or use Mela's web import;
+check for duplicates and preserve your Evernote annotations when doing so.
+Encrypted blocks, missing fields, uncertain classifications and multi-recipe
+notes are also flagged. Preserve the ENEX to retain original attachments and
+unsupported content.
 Exact duplicate source notes are flagged, but similar recipes are not
 automatically detected. Source IDs are based on the exported note content, so
 editing a note changes its ID; identical notes receive occurrence numbers.
@@ -64,5 +81,5 @@ Keep ENEX files, archives, reports and API credentials private and out of git.
 ## Run offline tests
 
 ```sh
-python3 -m unittest -v
+.venv/bin/python -m unittest -v
 ```

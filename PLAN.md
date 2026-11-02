@@ -47,8 +47,8 @@ and a per-note `report.csv`:
 1. Extract the note text, source URL, tags and attachments. Preserve original
    note content and attachments in the ENEX backup.
 2. Use an LLM for text extraction and a vision-capable model for photos or
-   scans. PDFs require supported page extraction or rendering; flag anything
-   that cannot be processed. Re-fetching a source page and using its
+   scans. Render PDF pages as images; flag anything that cannot be processed.
+   Re-fetching a source page and using its
    schema.org data could help, but the converter does not fetch live pages:
    it uses the archived note body and attachments, and flags unresolved
    clips for manual review. If live-page enrichment is added later, use it
@@ -56,8 +56,9 @@ and a per-note `report.csv`:
    content mismatches in the report.
 3. Generate documented Mela fields. Preserve section headings, quantities,
    units and instructions; do not invent missing information. Include the
-   source link and user annotations. Put supported recipe images in the
-   `images` field; explicitly report other attachments or omitted content.
+   source link and user annotations. Put source photos and rendered PDF pages
+   in the `images` field, select a lead image for each recipe where possible,
+   and explicitly report missing images, other attachments or omitted content.
 4. Flag non-recipes, multiple recipes in one note, exact duplicate notes,
    encrypted text, missing fields, unreadable images, model uncertainty and
    processing failures for review. Similar recipes may still need manual
