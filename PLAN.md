@@ -1,5 +1,7 @@
 # Evernote → Mela migration plan
 
+> **Update:** the converter now runs local-first to avoid API costs. Photos go through on-device OCR (Apple Vision on a Mac, Tesseract elsewhere) and the same text parser as typed notes, which can now find ingredient lists without headings. Claude is opt-in (`--llm`) and only sees notes nothing local could parse. See the README for the current workflow; the sections below are the original plan.
+
 The short version: export Evernote notebooks to `.enex`, run them through a
 converter script that turns each note into a Mela recipe file, bundle those into
 a `.melarecipes` archive, and import it into Mela in one go. The hard part isn't

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import threading
 from pathlib import Path
 
 import anthropic
@@ -17,6 +18,13 @@ DEFAULT_MODEL = "claude-opus-5-5"
 PROMPT_VERSION = "1"
 MAX_IMAGES = 8
 MAX_TEXT_CHARS = 60_000
+
+# USD per million tokens (input, output), for the cost readout only.
+PRICES = {
+    "claude-opus-5-5": (4.00, 20.00),
+    "claude-sonnet-5-5": (2.00, 10.00),
+    "claude-haiku-5-5": (0.10, 0.50),
+}
 
 SYSTEM = """You convert recipe notes from a personal Evernote archive into structured recipe fields for the Mela recipe app.
 
@@ -65,12 +73,34 @@ class NotARecipe(Exception):
 
 
 class LLMExtractor:
-    def __init__(self, model: str = DEFAULT_MODEL, cache_dir: str | Path = ".cache/llm", effort: str = "medium"):
+    def __init__(self, model: str = DEFAULT_MODEL, cache_dir: str | Path = ".cache/llm", effort: str = "low",
+                 max_calls: int | None = None):
         self.client = anthropic.Anthropic(max_retries=6)
         self.model = model
         self.effort = effort
+        self.max_calls = max_calls
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        self.calls = 0
+        self.cached = 0
+        self.input_tokens = 0
+        self.output_tokens = 0
+
+    def _reserve_call(self) -> None:
+        with self._lock:
+            if self.max_calls is not None and self.calls >= self.max_calls:
+                raise ExtractionError(f"skipped: --llm-max-calls {self.max_calls} reached")
+            self.calls += 1
+
+    def summary(self) -> str:
+        line = (f"Claude: {self.calls} API calls, {self.cached} from cache, "
+                f"{self.input_tokens:,} input / {self.output_tokens:,} output tokens")
+        if self.model in PRICES:
+            pin, pout = PRICES[self.model]
+            cost = self.input_tokens / 1e6 * pin + self.output_tokens / 1e6 * pout
+            line += f", about ${cost:.2f}"
+        return line
 
     def _content(self, note: Note) -> tuple[list[dict], list[str]]:
         warnings = []
@@ -128,6 +158,9 @@ class LLMExtractor:
             system=SYSTEM,
             messages=[{"role": "user", "content": content}],
         )
+        with self._lock:
+            self.input_tokens += response.usage.input_tokens or 0
+            self.output_tokens += response.usage.output_tokens or 0
         if response.stop_reason == "refusal":
             raise ExtractionError("model declined this note")
         if response.stop_reason == "max_tokens":
@@ -145,7 +178,10 @@ class LLMExtractor:
         content, warnings = self._content(note)
         if cache_file.exists():
             data = json.loads(cache_file.read_text())
+            with self._lock:
+                self.cached += 1
         else:
+            self._reserve_call()
             try:
                 data = self._call(content)
             except anthropic.APIStatusError as e:

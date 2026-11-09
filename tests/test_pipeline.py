@@ -76,7 +76,7 @@ def test_web_clip_falls_back_to_clipped_text():
 def test_end_to_end_without_llm(tmp_path):
     cats = tmp_path / "cats.json"
     cats.write_text(json.dumps({"desserts": "Dessert", "sample": None}))
-    assert main([str(SAMPLE), "--out", str(tmp_path / "out"), "--no-llm", "--no-fetch",
+    assert main([str(SAMPLE), "--out", str(tmp_path / "out"), "--no-fetch", "--no-ocr",
                  "--categories", str(cats), "--workers", "1"]) == 0
     archive = tmp_path / "out" / "import.melarecipes"
     with zipfile.ZipFile(archive) as zf:
@@ -88,7 +88,7 @@ def test_end_to_end_without_llm(tmp_path):
     card = by_title["Aunt May's card"]
     assert len(card["images"]) == 1  # kept so you can fix it by hand in Mela
     report = (tmp_path / "out" / "report.csv").read_text()
-    assert "photo/scan needs the LLM" in report
+    assert ",image,unparsed,partial," in report
     assert "empty note" in report
 
 
@@ -108,6 +108,7 @@ class _FakeMessages:
         from types import SimpleNamespace
         self.calls.append(kwargs)
         return SimpleNamespace(stop_reason="end_turn",
+                               usage=SimpleNamespace(input_tokens=2000, output_tokens=500),
                                content=[SimpleNamespace(type="text", text=json.dumps(self.payload))])
 
 
@@ -129,18 +130,28 @@ CARD = {"is_recipe": True, "title": "Aunt May's Scones", "description": "", "ing
 def test_image_note_goes_to_llm_with_image_and_caches(tmp_path, monkeypatch):
     llm, fake = _fake_llm(tmp_path, monkeypatch, CARD)
     note = notes()["Aunt May's card"]
-    r = convert(note, Options(fetch_urls=False, llm=llm))
+    r = convert(note, Options(fetch_urls=False, ocr=False, llm=llm))
     assert r.method == "llm" and r.status == "ok"
     assert r.recipe.title == "Aunt May's Scones" and r.recipe.cook_time == "12 min"
     call = fake.calls[0]
     assert call["model"] == "claude-opus-5-5"
     assert call["output_config"]["format"]["type"] == "json_schema"
     assert [b["type"] for b in call["messages"][0]["content"]] == ["image", "text"]
-    convert(note, Options(fetch_urls=False, llm=llm))
+    convert(note, Options(fetch_urls=False, ocr=False, llm=llm))
     assert len(fake.calls) == 1  # second run served from cache
+    assert llm.calls == 1 and llm.cached == 1
+    assert "about $0.02" in llm.summary()
+
+
+def test_llm_call_cap_falls_back_without_calling(tmp_path, monkeypatch):
+    llm, fake = _fake_llm(tmp_path, monkeypatch, CARD)
+    llm.max_calls = 0
+    r = convert(notes()["Aunt May's card"], Options(fetch_urls=False, ocr=False, llm=llm))
+    assert fake.calls == [] and r.status == "partial"
+    assert "llm-max-calls" in r.warnings[-1]
 
 
 def test_llm_not_a_recipe_is_skipped(tmp_path, monkeypatch):
     llm, _ = _fake_llm(tmp_path, monkeypatch, {**CARD, "is_recipe": False})
-    r = convert(notes()["Shopping"], Options(fetch_urls=False, llm=llm))
+    r = convert(notes()["Shopping"], Options(fetch_urls=False, ocr=False, llm=llm))
     assert r.status == "skipped"

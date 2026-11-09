@@ -19,6 +19,7 @@ class Recipe:
     nutrition: str = ""
     link: str = ""
     image_urls: list[str] = field(default_factory=list)
+    method_detail: str = ""
 
     @property
     def is_complete(self) -> bool:

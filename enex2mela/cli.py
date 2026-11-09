@@ -9,7 +9,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from . import mela
+from . import mela, ocr
 from .convert import Options, bucket, categories, convert, dedupe_key, load_category_map
 from .enex import iter_notes
 from .llm import DEFAULT_MODEL, LLMExtractor
@@ -20,10 +20,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("inputs", nargs="+", type=Path, help=".enex files (one per notebook)")
     p.add_argument("--out", type=Path, default=Path("out"), help="output directory (default: out/)")
     p.add_argument("--triage-only", action="store_true", help="classify notes and write the report, convert nothing")
-    p.add_argument("--no-llm", action="store_true", help="don't call Claude; photos and messy notes get flagged instead")
+    p.add_argument("--llm", action="store_true",
+                   help="send notes that local parsing couldn't handle to Claude (costs API credits)")
+    p.add_argument("--llm-max-calls", type=int, help="stop calling Claude after N requests this run")
+    p.add_argument("--no-ocr", action="store_true", help="don't OCR photos locally")
     p.add_argument("--no-fetch", action="store_true", help="don't re-fetch web clips from their source URL")
     p.add_argument("--model", default=DEFAULT_MODEL, help=f"Claude model (default: {DEFAULT_MODEL})")
-    p.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
+    p.add_argument("--effort", default="low", choices=["low", "medium", "high", "xhigh", "max"],
+                   help="Claude effort level (default: low)")
     p.add_argument("--categories", type=Path, help="JSON file mapping tag/notebook names to Mela categories")
     p.add_argument("--no-notebook-category", action="store_true", help="don't add the notebook name as a category")
     p.add_argument("--max-images", type=int, default=2, help="images to keep per recipe (default: 2)")
@@ -56,14 +60,17 @@ def main(argv: list[str] | None = None) -> int:
                 w.writerow([n.notebook, n.title, b, len(n.text().split()), len(n.images), len(n.pdfs),
                             n.source_url or "", "; ".join(n.tags)])
         print(f"{len(notes)} notes: " + ", ".join(f"{k} {v}" for k, v in counts.most_common()))
+        print(f"OCR engine: {ocr.backend() or 'none installed (see README)'}")
         print(f"report: {report_path}")
         return 0
 
-    opts = Options(
-        fetch_urls=not args.no_fetch,
-        llm=None if args.no_llm else LLMExtractor(model=args.model, effort=args.effort,
-                                                  cache_dir=args.out / ".cache" / "llm"),
-    )
+    if not args.no_ocr and ocr.backend() is None:
+        print("note: no OCR engine found, so photos will be flagged instead of read (see README)", file=sys.stderr)
+    llm = None
+    if args.llm:
+        llm = LLMExtractor(model=args.model, effort=args.effort, max_calls=args.llm_max_calls,
+                           cache_dir=args.out / ".cache" / "llm")
+    opts = Options(fetch_urls=not args.no_fetch, ocr=not args.no_ocr, llm=llm)
     mapping = load_category_map(args.categories)
     recipes_dir = args.out / "recipes"
 
@@ -102,7 +109,14 @@ def main(argv: list[str] | None = None) -> int:
 
     archive = mela.bundle(written, args.out / "import.melarecipes") if written else None
     counts = Counter(r.status for r in results)
+    methods = Counter(r.method for r in results if r.method)
     print(f"{len(results)} notes: " + ", ".join(f"{k} {v}" for k, v in counts.most_common()))
+    print("by method: " + ", ".join(f"{k} {v}" for k, v in methods.most_common()))
+    if llm:
+        print(llm.summary())
+    elif counts.get("partial"):
+        print(f"{counts['partial']} partial notes could go to Claude: rerun with --llm "
+              "(notes that already parse locally never reach the API)")
     if archive:
         print(f"import file: {archive}")
     print(f"report: {report_path}")
